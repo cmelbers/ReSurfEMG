@@ -11,6 +11,7 @@ import numpy as np
 import scipy
 from sklearn.decomposition import FastICA
 from scipy.signal import find_peaks
+import pandas as pd
 
 from resurfemg.preprocessing import envelope as evl
 import resurfemg.preprocessing.filtering as filt
@@ -562,3 +563,76 @@ def find_peaks_in_ecg_signal(ecg_signal, lower_border_percent=50):
         prominence=(max_peak*lower_border_percent/100, max_peak)
     )
     return set_ecg_peaks
+
+def remove_outliers_emg(emg_signal,fs):
+        """
+        This function removes outliers based on a threshold. It can be used before gating,
+        to make sure the QRS complexes are detected and not only the outliers.
+
+        :param ecg_signal: frequency array sampled at in Hertz
+        :type ecg_signal: ~numpy.ndarray
+        :param fs: sample frequency in samples per second
+        :type fs: integer
+
+        :returns: frequency array sampled at in Hertz
+        :rtype: ~numpy.ndarray
+        """
+        outlier_thres_pos, outlier_thres_neg = choose_thresholds_outliers(emg_signal)
+
+        outliers = pd.DataFrame([], columns=['In_outliers', 'Val_outliers', 't_outliers', 'Rep_with'])
+
+        # Determining outliers based on threshold
+        for i in range(0,len(emg_signal)):
+            int_data = emg_signal[i]
+            if int_data > outlier_thres_pos or int_data < outlier_thres_neg:
+                if len(outliers) == 0:
+                    rep_with = emg_signal[i-1]
+                else:
+                    if i - outliers.iloc[len(outliers)-1,0] != 1:
+                        rep_with = emg_signal[i-1]
+                new_outlier = {'In_outliers': i, 'Val_outliers': int_data, 't_outliers': i/fs, 'Rep_with':rep_with}
+                outliers.loc[len(outliers)] = new_outlier
+
+        # Replacing outliers by last value within range
+        for i in range(0,len(outliers)):
+            emg_signal[outliers.iloc[i,0]] = outliers.iloc[i,3]
+        return emg_signal
+
+def choose_thresholds_outliers(signal):
+    """
+    This function is used to determine a threshold to use when removing outliers.
+    It creates a list of thresholds and counts the amount of samples at every threshold
+    till there are less than 100 samples on this threshold. This indicates outliers.
+    A difference of 30% between every threshold was chosen, as in the function 
+    detect_ecg_peaks peaks are detected within a 30% range of the largest peak.
+
+    :param ecg_signal: frequency array sampled at in Hertz
+    :type ecg_signal: ~numpy.ndarray
+
+    :returns: tuple first element positive threshold, next negative threshold
+    :rtype: tuple
+
+    """
+    # Create a list with thresholds to test
+    start_thres = 20
+    thresholds_pos = [start_thres]
+    for number in range(1,30):
+        thresholds_pos.append(start_thres*1.3**number) 
+    thresholds_neg = [-thres for thres in thresholds_pos]
+
+    thresholds = [thresholds_pos,thresholds_neg]
+    print(thresholds)
+
+    # Test for every threshold if enough samples are present
+    list_t = 'positive'
+    for list_thres in thresholds:
+        for thres in list_thres:
+            samples_around_thres = signal[(signal >= thres) & (signal <= thres+3)]
+            if len(samples_around_thres) < 100:
+                if list_t == 'positive':
+                    outlier_thres_pos = thres
+                else:
+                    outlier_thres_neg = thres
+                list_t = 'negative'
+                break
+    return outlier_thres_pos, outlier_thres_neg
