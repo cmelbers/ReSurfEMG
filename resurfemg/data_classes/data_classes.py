@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import scipy
 import matplotlib.pyplot as plt
+from scipy import signal
 
 from resurfemg.helper_functions import helper_functions as hf
 from resurfemg.preprocessing import filtering as filt
@@ -267,7 +268,7 @@ class TimeSeries:
     def remove_outliers_emg(
         self,
         signal_type,
-        fs_emg
+        fs
      ):
         """
         Remove outliers based on a threshold
@@ -284,7 +285,7 @@ class TimeSeries:
                 else:
                     if i - outliers.iloc[len(outliers)-1,0] != 1:
                         rep_with = ecg_signal[i-1]
-                new_outlier = {'In_outliers': i, 'Val_outliers': int_data, 't_outliers': i/fs_emg, 'Rep_with':rep_with}
+                new_outlier = {'In_outliers': i, 'Val_outliers': int_data, 't_outliers': i/fs, 'Rep_with':rep_with}
                 outliers.loc[len(outliers)] = new_outlier
 
         # Replacing outliers by last value within range
@@ -335,6 +336,37 @@ class TimeSeries:
             gate_width_samples,
             ecg_shift=10,
         )
+    
+    def emg_highpass_butter_sample(
+        self,
+        signal_type,
+        high_pass,
+        sample_rate,
+        order=3,
+    ):
+
+        """Output is the EMG after a bandpass as made here.
+
+        :param data_emg_samp: The array in the sample
+        :type data_emg_samp: ~numpy.ndarray
+        :param high_pass: The number to cut off :code:`frequenciesabove`
+        :type high_pass: int
+        :param order: The filter order
+        :type order: int
+
+        :returns: The bandpass filtered EMG sample data
+        :rtype: ~numpy.ndarray
+        """
+        sos = signal.butter(
+            order,
+            [high_pass],
+            'highpass',
+            fs=sample_rate,
+            output='sos',
+        )
+        data_emg_samp = self.signal_type_data(signal_type=signal_type)
+        emg_filtered = signal.sosfiltfilt(sos, data_emg_samp)
+        self.y_clean = emg_filtered
 
     def envelope(
         self,
@@ -1592,15 +1624,12 @@ class EmgDataGroup(TimeSeriesGroup):
         self, 
         signal_type = 'clean',
         channel_idxs=None,
-        fs_emg =None
+        fs=None
     ):
         """
         This function removes outliers of the ECG signal
     
         """
-        if fs_emg is None:
-            print('No input for fs_emg has been detected.')
-            exit()
         if channel_idxs is None:
             channel_idxs = np.arange(self.n_channel)
         elif isinstance(channel_idxs, int):
@@ -1609,7 +1638,7 @@ class EmgDataGroup(TimeSeriesGroup):
         for _, channel_idx in enumerate(channel_idxs):
             self.channels[channel_idx].remove_outliers_emg(
                 signal_type=signal_type,
-                fs_emg = fs_emg
+                fs = fs
             )
 
     def gating(
@@ -1646,6 +1675,33 @@ class EmgDataGroup(TimeSeriesGroup):
                 use_no_outliers = use_no_outliers
             )
 
+    def filter_QS(
+        self,
+        signal_type='clean',
+        high_pass = None,
+        fs = None,
+        channel_idxs=None,
+    ):
+        """
+        Highpass filter to eliminate the Q- and S-peak
+        """
+        if channel_idxs is None:
+            channel_idxs = np.arange(self.n_channel)
+        elif isinstance(channel_idxs, int):
+            channel_idxs = np.array([channel_idxs])
+
+        if high_pass is None:
+            high_pass = 20
+        else:
+            high_pass = high_pass
+
+        for _, channel_idx in enumerate(channel_idxs):
+            self.channels[channel_idx].emg_highpass_butter_sample(
+                signal_type=signal_type,
+                high_pass=high_pass,
+                sample_rate=fs,
+                order=3
+                )
 
 class VentilatorDataGroup(TimeSeriesGroup):
     """
