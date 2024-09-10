@@ -273,25 +273,26 @@ class TimeSeries:
         """
         Remove outliers based on a threshold
         """
-        ecg_signal = self.signal_type_data(signal_type=signal_type)
+        emg_signal = self.signal_type_data(signal_type=signal_type)
+        thres_pos, thres_neg = ecg_rm.choose_thresholds_outliers(emg_signal)
         outliers = pd.DataFrame([], columns=['In_outliers', 'Val_outliers', 't_outliers', 'Rep_with'])
 
         # Determining outliers based on threshold
-        for i in range(0,len(ecg_signal)):
-            int_data = ecg_signal[i]
-            if int_data > 450 or int_data < -300: #TO DO: rewrite hardscript
+        for i in range(0,len(emg_signal)):
+            int_data = emg_signal[i]
+            if int_data > thres_pos or int_data < thres_neg:
                 if len(outliers) == 0:
-                    rep_with = ecg_signal[i-1]
+                    rep_with = emg_signal[i-1]
                 else:
                     if i - outliers.iloc[len(outliers)-1,0] != 1:
-                        rep_with = ecg_signal[i-1]
+                        rep_with = emg_signal[i-1]
                 new_outlier = {'In_outliers': i, 'Val_outliers': int_data, 't_outliers': i/fs, 'Rep_with':rep_with}
                 outliers.loc[len(outliers)] = new_outlier
 
         # Replacing outliers by last value within range
         for i in range(0,len(outliers)):
-            ecg_signal[outliers.iloc[i,0]] = outliers.iloc[i,3]
-        self.y_clean = ecg_signal
+            emg_signal[outliers.iloc[i,0]] = outliers.iloc[i,3]
+        self.y_clean = emg_signal
 
     def gating(
         self,
@@ -314,6 +315,9 @@ class TimeSeries:
                     self.y_raw, 1, lp_cf, self.fs, output='sos')
             elif use_no_outliers is True:
                 ecg_raw = self.y_clean
+
+            plt.figure(figsize=(12, 6))  # Set the figure size
+            plt.plot(ecg_raw)
 
             ecg_peak_idxs = ecg_rm.detect_ecg_peaks(
                 ecg_raw=ecg_raw,
