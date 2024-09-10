@@ -263,6 +263,34 @@ class TimeSeries:
         # Eliminate the baseline wander from the data using a band-pass filter
         self.y_clean = filt.emg_bandpass_butter_sample(
             y_data, hp_cf, lp_cf, self.fs, output='sos')
+    
+    def remove_outliers_emg(
+        self,
+        signal_type,
+        fs_emg
+     ):
+        """
+        Remove outliers based on a threshold
+        """
+        ecg_signal = self.signal_type_data(signal_type=signal_type)
+        outliers = pd.DataFrame([], columns=['In_outliers', 'Val_outliers', 't_outliers', 'Rep_with'])
+
+        # Determining outliers based on threshold
+        for i in range(0,len(ecg_signal)):
+            int_data = ecg_signal[i]
+            if int_data > 450 or int_data < -300: #TO DO: rewrite hardscript
+                if len(outliers) == 0:
+                    rep_with = ecg_signal[i-1]
+                else:
+                    if i - outliers.iloc[len(outliers)-1,0] != 1:
+                        rep_with = ecg_signal[i-1]
+                new_outlier = {'In_outliers': i, 'Val_outliers': int_data, 't_outliers': i/fs_emg, 'Rep_with':rep_with}
+                outliers.loc[len(outliers)] = new_outlier
+
+        # Replacing outliers by last value within range
+        for i in range(0,len(outliers)):
+            ecg_signal[outliers.iloc[i,0]] = outliers.iloc[i,3]
+        self.y_clean = ecg_signal
 
     def gating(
         self,
@@ -271,6 +299,7 @@ class TimeSeries:
         ecg_peak_idxs=None,
         ecg_raw=None,
         bp_filter=True,
+        use_no_outliers = False
     ):
         """
         Eliminate ECG artifacts from the provided signal. See ecg_removal
@@ -278,23 +307,25 @@ class TimeSeries:
         """
         y_data = self.signal_type_data(signal_type=signal_type)
         if ecg_peak_idxs is None:
-            if ecg_raw is None:
+            if ecg_raw is None and use_no_outliers is False:
                 lp_cf = min([500.0, self.fs / 2])
                 ecg_raw = filt.emg_bandpass_butter_sample(
                     self.y_raw, 1, lp_cf, self.fs, output='sos')
+            elif use_no_outliers is True:
+                ecg_raw = self.y_clean
 
             ecg_peak_idxs = ecg_rm.detect_ecg_peaks(
                 ecg_raw=ecg_raw,
                 fs=self.fs,
                 bp_filter=bp_filter,
-            )
+            )    
 
         self.set_peaks(
             signal=ecg_raw,
             peak_idxs=ecg_peak_idxs,
             peak_set_name='ecg',
         )
-
+        
         if gate_width_samples is None:
             gate_width_samples = self.fs // 10
 
@@ -1540,6 +1571,47 @@ class EmgDataGroup(TimeSeriesGroup):
                 lp_cf=lp_cf,
             )
 
+    def signal_type_clean(
+        self,
+        channel_idxs=None  
+    ):
+        """
+        Convert data to a signal type 'clean'.
+        """
+        if channel_idxs is None:
+            channel_idxs = np.arange(self.n_channel)
+        elif isinstance(channel_idxs, int):
+            channel_idxs = np.array([channel_idxs])
+
+        for _, channel_idx in enumerate(channel_idxs):
+            self.channels[channel_idx].signal_type_data(
+                signal_type='clean',
+            )
+
+    def remove_outliers(
+        self, 
+        signal_type = 'clean',
+        channel_idxs=None,
+        fs_emg =None
+    ):
+        """
+        This function removes outliers of the ECG signal
+    
+        """
+        if fs_emg is None:
+            print('No input for fs_emg has been detected.')
+            exit()
+        if channel_idxs is None:
+            channel_idxs = np.arange(self.n_channel)
+        elif isinstance(channel_idxs, int):
+            channel_idxs = np.array([channel_idxs])
+
+        for _, channel_idx in enumerate(channel_idxs):
+            self.channels[channel_idx].remove_outliers_emg(
+                signal_type=signal_type,
+                fs_emg = fs_emg
+            )
+
     def gating(
         self,
         signal_type='clean',
@@ -1548,6 +1620,7 @@ class EmgDataGroup(TimeSeriesGroup):
         ecg_raw=None,
         bp_filter=True,
         channel_idxs=None,
+        use_no_outliers = None
     ):
         """
         Eliminate ECG artifacts from the provided signal. See ecg_removal
@@ -1557,7 +1630,7 @@ class EmgDataGroup(TimeSeriesGroup):
             channel_idxs = np.arange(self.n_channel)
         elif isinstance(channel_idxs, int):
             channel_idxs = np.array([channel_idxs])
-
+        
         if ecg_raw is None and ecg_peak_idxs is None:
             if self.ecg_idx is not None:
                 ecg_raw = self.channels[self.ecg_idx].y_raw
@@ -1570,6 +1643,7 @@ class EmgDataGroup(TimeSeriesGroup):
                 ecg_peak_idxs=ecg_peak_idxs,
                 ecg_raw=ecg_raw,
                 bp_filter=bp_filter,
+                use_no_outliers = use_no_outliers
             )
 
 
