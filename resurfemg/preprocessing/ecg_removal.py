@@ -621,14 +621,13 @@ def choose_thresholds_outliers(signal):
     thresholds_neg = [-thres for thres in thresholds_pos]
 
     thresholds = [thresholds_pos,thresholds_neg]
-    print(thresholds)
 
     # Test for every threshold if enough samples are present
     list_t = 'positive'
     for list_thres in thresholds:
         for thres in list_thres:
             samples_around_thres = signal[(signal >= thres) & (signal <= thres+3)]
-            if len(samples_around_thres) < 100:
+            if len(samples_around_thres) < 500:
                 if list_t == 'positive':
                     outlier_thres_pos = thres
                 else:
