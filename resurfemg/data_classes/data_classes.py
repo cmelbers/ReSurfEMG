@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 import scipy
 import matplotlib.pyplot as plt
-from scipy import signal
 
 from resurfemg.helper_functions import helper_functions as hf
 from resurfemg.preprocessing import filtering as filt
@@ -268,31 +267,15 @@ class TimeSeries:
     def remove_outliers_emg(
         self,
         signal_type,
-        fs
+        fs,
+        lowest_threshold
      ):
         """
         Remove outliers based on a threshold
         """
         emg_signal = self.signal_type_data(signal_type=signal_type)
-        thres_pos, thres_neg = ecg_rm.choose_thresholds_outliers(emg_signal)
-        outliers = pd.DataFrame([], columns=['In_outliers', 'Val_outliers', 't_outliers', 'Rep_with'])
-
-        # Determining outliers based on threshold
-        for i in range(0,len(emg_signal)):
-            int_data = emg_signal[i]
-            if int_data > thres_pos or int_data < thres_neg:
-                if len(outliers) == 0:
-                    rep_with = emg_signal[i-1]
-                else:
-                    if i - outliers.iloc[len(outliers)-1,0] != 1:
-                        rep_with = emg_signal[i-1]
-                new_outlier = {'In_outliers': i, 'Val_outliers': int_data, 't_outliers': i/fs, 'Rep_with':rep_with}
-                outliers.loc[len(outliers)] = new_outlier
-
-        # Replacing outliers by last value within range
-        for i in range(0,len(outliers)):
-            emg_signal[outliers.iloc[i,0]] = outliers.iloc[i,3]
-        self.y_clean = emg_signal
+        # Eliminate the outliers found with a automatically detected threshold
+        self.y_clean = ecg_rm.remove_outliers_emg(emg_signal,fs,lowest_threshold)
 
     def gating(
         self,
@@ -316,9 +299,6 @@ class TimeSeries:
             elif use_no_outliers is True:
                 ecg_raw = self.y_clean
 
-            plt.figure(figsize=(12, 6))  # Set the figure size
-            plt.plot(ecg_raw)
-
             ecg_peak_idxs = ecg_rm.detect_ecg_peaks(
                 ecg_raw=ecg_raw,
                 fs=self.fs,
@@ -341,36 +321,18 @@ class TimeSeries:
             ecg_shift=10,
         )
     
-    def emg_highpass_butter_sample(
+    def filter_QS_peaks(
         self,
         signal_type,
         high_pass,
         sample_rate,
         order=3,
     ):
-
-        """Output is the EMG after a bandpass as made here.
-
-        :param data_emg_samp: The array in the sample
-        :type data_emg_samp: ~numpy.ndarray
-        :param high_pass: The number to cut off :code:`frequenciesabove`
-        :type high_pass: int
-        :param order: The filter order
-        :type order: int
-
-        :returns: The bandpass filtered EMG sample data
-        :rtype: ~numpy.ndarray
         """
-        sos = signal.butter(
-            order,
-            [high_pass],
-            'highpass',
-            fs=sample_rate,
-            output='sos',
-        )
+        Output is the EMG after a bandpass as made here.
+        """
         data_emg_samp = self.signal_type_data(signal_type=signal_type)
-        emg_filtered = signal.sosfiltfilt(sos, data_emg_samp)
-        self.y_clean = emg_filtered
+        self.y_clean = filt.emg_highpass_butter_sample(data_emg_samp, high_pass, sample_rate)
 
     def envelope(
         self,
@@ -1628,7 +1590,8 @@ class EmgDataGroup(TimeSeriesGroup):
         self, 
         signal_type = 'clean',
         channel_idxs=None,
-        fs=None
+        fs=None,
+        lowest_threshold=None
     ):
         """
         This function removes outliers of the ECG signal
@@ -1639,10 +1602,14 @@ class EmgDataGroup(TimeSeriesGroup):
         elif isinstance(channel_idxs, int):
             channel_idxs = np.array([channel_idxs])
 
+        if lowest_threshold is None:
+            lowest_threshold = 20
+
         for _, channel_idx in enumerate(channel_idxs):
             self.channels[channel_idx].remove_outliers_emg(
                 signal_type=signal_type,
-                fs = fs
+                fs = fs,
+                lowest_threshold = lowest_threshold
             )
 
     def gating(
@@ -1700,7 +1667,7 @@ class EmgDataGroup(TimeSeriesGroup):
             high_pass = high_pass
 
         for _, channel_idx in enumerate(channel_idxs):
-            self.channels[channel_idx].emg_highpass_butter_sample(
+            self.channels[channel_idx].filter_QS_peaks(
                 signal_type=signal_type,
                 high_pass=high_pass,
                 sample_rate=fs,
