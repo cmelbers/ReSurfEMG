@@ -1590,7 +1590,6 @@ class EmgDataGroup(TimeSeriesGroup):
         self, 
         signal_type = 'clean',
         channel_idxs=None,
-        fs=None,
         lowest_threshold=None
     ):
         """
@@ -1608,7 +1607,7 @@ class EmgDataGroup(TimeSeriesGroup):
         for _, channel_idx in enumerate(channel_idxs):
             self.channels[channel_idx].remove_outliers_emg(
                 signal_type=signal_type,
-                fs = fs,
+                fs = self.fs,
                 lowest_threshold = lowest_threshold
             )
 
@@ -1650,7 +1649,6 @@ class EmgDataGroup(TimeSeriesGroup):
         self,
         signal_type='clean',
         high_pass = None,
-        fs = None,
         channel_idxs=None,
     ):
         """
@@ -1670,7 +1668,7 @@ class EmgDataGroup(TimeSeriesGroup):
             self.channels[channel_idx].filter_QS_peaks(
                 signal_type=signal_type,
                 high_pass=high_pass,
-                sample_rate=fs,
+                sample_rate=self.fs,
                 order=3
                 )
 
