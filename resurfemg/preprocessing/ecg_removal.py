@@ -564,7 +564,7 @@ def find_peaks_in_ecg_signal(ecg_signal, lower_border_percent=50):
     )
     return set_ecg_peaks
 
-def remove_outliers_emg(emg_signal,fs):
+def remove_outliers_emg(emg_signal,fs,lowest_threshold):
         """
         This function removes outliers based on a threshold. It can be used before gating,
         to make sure the QRS complexes are detected and not only the outliers.
@@ -577,7 +577,7 @@ def remove_outliers_emg(emg_signal,fs):
         :returns: frequency array sampled at in Hertz
         :rtype: ~numpy.ndarray
         """
-        outlier_thres_pos, outlier_thres_neg = choose_thresholds_outliers(emg_signal)
+        outlier_thres_pos, outlier_thres_neg = choose_thresholds_outliers(emg_signal,fs,lowest_threshold)
 
         outliers = pd.DataFrame([], columns=['In_outliers', 'Val_outliers', 't_outliers', 'Rep_with'])
 
@@ -598,7 +598,7 @@ def remove_outliers_emg(emg_signal,fs):
             emg_signal[outliers.iloc[i,0]] = outliers.iloc[i,3]
         return emg_signal
 
-def choose_thresholds_outliers(signal):
+def choose_thresholds_outliers(signal, fs, lowest_threshold):
     """
     This function is used to determine a threshold to use when removing outliers.
     It creates a list of thresholds and counts the amount of samples at every threshold
@@ -608,16 +608,19 @@ def choose_thresholds_outliers(signal):
 
     :param ecg_signal: frequency array sampled at in Hertz
     :type ecg_signal: ~numpy.ndarray
+    :param lowest_threshold: threshold from which will be assessed as threshold for outliers
+    :type lowest_threshold: integer
+    :param lowest_threshold: sample frequency in samples per second
+    :type lowest_threshold: integer
 
     :returns: tuple first element positive threshold, next negative threshold
     :rtype: tuple
 
     """
     # Create a list with thresholds to test
-    start_thres = 20
-    thresholds_pos = [start_thres]
+    thresholds_pos = [lowest_threshold]
     for number in range(1,30):
-        thresholds_pos.append(start_thres*1.3**number) 
+        thresholds_pos.append(lowest_threshold*1.3**number) 
     thresholds_neg = [-thres for thres in thresholds_pos]
 
     thresholds = [thresholds_pos,thresholds_neg]
@@ -627,7 +630,7 @@ def choose_thresholds_outliers(signal):
     for list_thres in thresholds:
         for thres in list_thres:
             samples_around_thres = signal[(signal >= thres) & (signal <= thres+3)]
-            if len(samples_around_thres) < 500:
+            if len(samples_around_thres) < (len(signal)/fs)/3:
                 if list_t == 'positive':
                     outlier_thres_pos = thres
                 else:
