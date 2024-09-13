@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import scipy
 import matplotlib.pyplot as plt
+import pickle
 
 from resurfemg.helper_functions import helper_functions as hf
 from resurfemg.preprocessing import filtering as filt
@@ -271,7 +272,8 @@ class TimeSeries:
         lowest_threshold
      ):
         """
-        Remove outliers based on a threshold
+        Remove outliers based on a threshold. See ecg_removal submodule in
+        preprocessing.
         """
         emg_signal = self.signal_type_data(signal_type=signal_type)
         # Eliminate the outliers found with a automatically detected threshold
@@ -329,7 +331,8 @@ class TimeSeries:
         order=3,
     ):
         """
-        Output is the EMG after a bandpass as made here.
+        Output is the EMG after a bandpass as made here. See
+        filtering module in preprocessing.
         """
         data_emg_samp = self.signal_type_data(signal_type=signal_type)
         self.y_clean = filt.emg_highpass_butter_sample(data_emg_samp, high_pass, sample_rate)
@@ -508,6 +511,22 @@ class TimeSeries:
         self.peaks[linked_peak_set_name].quality_outcomes_df = \
             peak_set.quality_outcomes_df.loc[link_peak_nrs].reset_index(
                 drop=True)
+
+    def quality_assement(
+        self,
+        threshold,
+        peak_set_name,
+    ):
+        self.detect_emg_breaths(
+                threshold=threshold,
+                peak_set_name=peak_set_name
+                )
+        self.peaks[peak_set_name].detect_on_offset(
+            fs=self.fs,
+            baseline=self.y_baseline
+            )
+        self.calculate_time_products(peak_set_name='breaths')
+        self.test_emg_quality(peak_set_name='breaths')
 
     def calculate_time_products(
         self,
@@ -1261,6 +1280,7 @@ class TimeSeriesGroup:
         """
         self.channels = []
         self.fs = fs
+        self.peaks = dict()
         data_shape = list(np.array(y_raw).shape)
         data_dims = len(data_shape)
         if data_dims == 1:
@@ -1636,7 +1656,7 @@ class EmgDataGroup(TimeSeriesGroup):
                 print('Auto-detected ECG channel from labels.')
 
         for _, channel_idx in enumerate(channel_idxs):
-            self.channels[channel_idx].gating(
+            self.peaks = self.channels[channel_idx].gating(
                 signal_type=signal_type,
                 gate_width_samples=gate_width_samples,
                 ecg_peak_idxs=ecg_peak_idxs,
@@ -1671,6 +1691,33 @@ class EmgDataGroup(TimeSeriesGroup):
                 sample_rate=self.fs,
                 order=3
                 )
+            
+    def quality_check(
+            self,
+            threshold=None,
+            channel_idxs=None,
+            peak_set_name=None
+    ):
+        if channel_idxs is None:
+            channel_idxs = np.arange(self.n_channel)
+        elif isinstance(channel_idxs, int):
+            channel_idxs = np.array([channel_idxs])
+
+        if threshold is None:
+            threshold = 0
+        if peak_set_name is None:
+            peak_set_name = 'breaths'
+
+        for _, channel_idx in enumerate(channel_idxs):
+            self.channels[channel_idx].quality_assement(
+                threshold=threshold,
+                peak_set_name=peak_set_name
+                )
+
+    def save_instance(self, filename):
+        # Save the instance to a file using pickle
+        with open(filename, 'wb') as file:
+            pickle.dump(self, file)
 
 class VentilatorDataGroup(TimeSeriesGroup):
     """
