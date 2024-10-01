@@ -264,6 +264,19 @@ class TimeSeries:
         # Eliminate the baseline wander from the data using a band-pass filter
         self.y_clean = filt.emg_bandpass_butter_sample(
             y_data, hp_cf, lp_cf, self.fs, output='sos')
+        
+    def filter_vent(
+        self,
+        signal_type='raw',
+        lp_cf=5.0,
+    ):
+        """
+        Filter raw ventilator signal to remove high frequency components.
+        """
+        y_data = self.signal_type_data(signal_type=signal_type)
+        # Eliminate the baseline wander from the data using a low-pass filter
+        self.y_clean = filt.emg_lowpass_butter_sample(
+            y_data, lp_cf, self.fs,)
     
     def remove_outliers_emg(
         self,
@@ -1319,6 +1332,26 @@ class TimeSeriesGroup:
             )
             self.channels.append(new_timeseries)
 
+    def filter_vent_low(
+        self,
+        signal_type='raw',
+        lp_cf=5,
+        channel_idxs=None,
+    ):
+        """
+        Filter raw ventilator signal to remove high frequency components.
+        """
+        if channel_idxs is None:
+            channel_idxs = np.arange(self.n_channel)
+        elif isinstance(channel_idxs, int):
+            channel_idxs = np.array([channel_idxs])
+
+        for _, channel_idx in enumerate(channel_idxs):
+            self.channels[channel_idx].filter_vent(
+                signal_type=signal_type,
+                lp_cf=lp_cf,
+            )
+
     def envelope(
         self,
         env_window=None,
@@ -1833,8 +1866,7 @@ class VentilatorDataGroup(TimeSeriesGroup):
         Filter raw ventilator signal to remove baseline wander and high frequency
         components.
         """
-        self.filter(
+        self.filter_vent_low(
             signal_type=signal_type,
-            hp_cf=hp_cf,
             lp_cf=lp_cf,
         )
