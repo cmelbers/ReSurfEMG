@@ -1863,3 +1863,19 @@ class VentilatorDataGroup(TimeSeriesGroup):
             )
         else:
             warnings.warn('pressure_idx and self.p_aw_idx not defined.')
+
+    def filter_vent(
+        self,
+        signal_type='raw',
+        hp_cf=0.05,
+        lp_cf=5,     
+    ):
+        """
+        Filter raw ventilator signal to remove baseline wander and high frequency
+        components.
+        """
+        self.filter(
+            signal_type=signal_type,
+            hp_cf=hp_cf,
+            lp_cf=lp_cf,
+        )
