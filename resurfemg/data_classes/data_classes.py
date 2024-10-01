@@ -322,20 +322,6 @@ class TimeSeries:
             gate_width_samples,
             ecg_shift=10,
         )
-    
-    def filter_QS_peaks(
-        self,
-        signal_type,
-        high_pass,
-        sample_rate,
-        order=3,
-    ):
-        """
-        Output is the EMG after a bandpass as made here. See
-        filtering module in preprocessing.
-        """
-        data_emg_samp = self.signal_type_data(signal_type=signal_type)
-        self.y_clean = filt.emg_highpass_butter_sample(data_emg_samp, high_pass, sample_rate)
 
     def envelope(
         self,
@@ -1664,33 +1650,6 @@ class EmgDataGroup(TimeSeriesGroup):
                 bp_filter=bp_filter,
                 use_no_outliers = use_no_outliers
             )
-
-    def filter_QS(
-        self,
-        signal_type='clean',
-        high_pass = None,
-        channel_idxs=None,
-    ):
-        """
-        Highpass filter to eliminate the Q- and S-peak
-        """
-        if channel_idxs is None:
-            channel_idxs = np.arange(self.n_channel)
-        elif isinstance(channel_idxs, int):
-            channel_idxs = np.array([channel_idxs])
-
-        if high_pass is None:
-            high_pass = 20
-        else:
-            high_pass = high_pass
-
-        for _, channel_idx in enumerate(channel_idxs):
-            self.channels[channel_idx].filter_QS_peaks(
-                signal_type=signal_type,
-                high_pass=high_pass,
-                sample_rate=self.fs,
-                order=3
-                )
             
     def quality_check(
             self,
