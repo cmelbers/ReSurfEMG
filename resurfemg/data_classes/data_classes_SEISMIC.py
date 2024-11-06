@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import scipy
 import matplotlib.pyplot as plt
+import pickle
 
 from resurfemg.helper_functions import helper_functions as hf
 from resurfemg.preprocessing import filtering as filt
@@ -149,27 +150,7 @@ class TimeSeries:
             else:
                 self.quality_values_df = tests_df_new
 
-            test_keys = list(tests_df_new.keys())
-            test_keys.pop(test_keys.index('peak_idx'))
-            passed_tests = np.all(
-                tests_df_new.loc[:, test_keys].to_numpy(), axis=1)
-            self.peak_df['valid'] = passed_tests
 
-        def sanitize(self):
-            """
-            Delete invalid peak entries (self.peak_df['valid'] is False) from
-            self.peak_df, self.quality_values_df, and self.quality_outcomes_df.
-
-            :returns: None
-            :rtype: None
-            """
-            valid_idxs = np.argwhere(self.peak_df['valid'])
-
-            self.peak_df = self.peak_df.loc[valid_idxs].reset_index(drop=True)
-            self.quality_outcomes_df = \
-                self.quality_outcomes_df.loc[valid_idxs].reset_index(drop=True)
-            self.quality_values_df = \
-                self.quality_values_df.loc[valid_idxs].reset_index(drop=True)
 
     def __init__(self, y_raw, t_data=None, fs=None, label=None, units=None):
         """
