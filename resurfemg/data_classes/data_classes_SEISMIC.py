@@ -1472,11 +1472,13 @@ class EmgDataGroup(TimeSeriesGroup):
     def gating(
         self,
         signal_type='clean',
+        peak_fraction=0.3,
         gate_width_samples=None,
         ecg_peak_idxs=None,
         ecg_raw=None,
         bp_filter=True,
         channel_idxs=None,
+        use_no_outliers = None
     ):
         """
         Eliminate ECG artifacts from the provided signal. See ecg_removal
