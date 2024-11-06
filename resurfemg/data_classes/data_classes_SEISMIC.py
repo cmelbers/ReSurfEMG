@@ -1090,8 +1090,9 @@ class TimeSeriesGroup:
     Data class to store, process, and plot time series data
     """
 
-    def __init__(self, y_raw, t_data=None, fs=None, labels=None, units=None):
+    def __init__(self, y_raw, t_data=None, fs=None, labels=None, units=None, remove_length=None):
         """
+        Initialize the main data characteristics:
         :param y_raw: raw signal data
         :type y_raw: ~numpy.ndarray
         :param t_data: time axis data, if None, generated from fs
@@ -1101,26 +1102,35 @@ class TimeSeriesGroup:
         :param labels: list of labels, one per provided channel
         :type labels: ~list of str
         :param units: list of signal units, one per provided channel
-        :type units: ~list
-
-        :returns: None
-        :rtype: None
+        :type units: ~list of str
+        :param remove_length: interval in seconds that is to be removed at the end 
+        of beginning of the signal
+        :type remove_length: int
         """
         self.channels = []
         self.fs = fs
-        data_shape = list(np.array(y_raw).shape)
+        self.peaks = dict()
+        if remove_length is not None and fs is not None:
+            length_idx = fs*remove_length
+            y_raw_new = []
+            for i in range(len(y_raw)):
+                new_y = y_raw[i][length_idx:-length_idx]
+                y_raw_new.append(new_y)
+        else:
+            y_raw_new = y_raw
+        data_shape = list(np.array(y_raw_new).shape)
         data_dims = len(data_shape)
         if data_dims == 1:
-            self.n_samp = len(y_raw)
+            self.n_samp = len(y_raw_new)
             self.n_channel = 1
-            y_raw = np.array(y_raw).reshape((1, self.n_samp))
+            y_raw_new = np.array(y_raw_new).reshape((1, self.n_samp))
         elif data_dims == 2:
             self.n_samp = data_shape[np.argmax(data_shape)]
             self.n_channel = data_shape[np.argmin(data_shape)]
             if np.argmin(data_shape) == 0:
-                y_raw = np.array(y_raw)
+                y_raw_new = np.array(y_raw_new)
             else:
-                y_raw = np.array(y_raw).T
+                y_raw_new = np.array(y_raw_new).T
         else:
             raise ValueError('Invalid data dimensions')
 
@@ -1152,7 +1162,7 @@ class TimeSeriesGroup:
 
         for idx in range(self.n_channel):
             new_timeseries = TimeSeries(
-                y_raw=y_raw[idx, :],
+                y_raw=y_raw_new[idx, :],
                 t_data=t_data,
                 fs=fs,
                 label=self.labels[idx],
@@ -1382,9 +1392,9 @@ class EmgDataGroup(TimeSeriesGroup):
     """
     Child-class of TimeSeriesGroup to store and handle emg data in.
     """
-    def __init__(self, y_raw, t_data=None, fs=None, labels=None, units=None):
+    def __init__(self, y_raw, t_data=None, fs=None, labels=None, units=None, remove_length=None):
         super().__init__(
-            y_raw, t_data=t_data, fs=fs, labels=labels, units=units)
+            y_raw, t_data=t_data, fs=fs, labels=labels, units=units, remove_length=remove_length)
 
         labels_lc = [label.lower() for label in labels]
         if 'ecg' in labels_lc:
@@ -1524,18 +1534,15 @@ class VentilatorDataGroup(TimeSeriesGroup):
     """
     Child-class of TimeSeriesGroup to store and handle ventilator data in.
     """
-    def __init__(self, y_raw, t_data=None, fs=None, labels=None, units=None):
+    def __init__(self, y_raw, t_data=None, fs=None, labels=None, units=None, remove_length=None):
         super().__init__(
-            y_raw, t_data=t_data, fs=fs, labels=labels, units=units)
+            y_raw, t_data=t_data, fs=fs, labels=labels, units=units, remove_length=remove_length)
 
         if 'Paw' in labels:
-            self.p_vent_idx = labels.index('Paw')
-            print('Auto-detected Pvent channel from labels.')
-        elif 'Pvent' in labels:
-            self.p_vent_idx = labels.index('Pvent')
-            print('Auto-detected Pvent channel from labels.')
+            self.p_aw_idx = labels.index('Paw')
+            print('Auto-detected Paw channel from labels.')
         else:
-            self.p_vent_idx = None
+            self.p_aw_idx = None
         if 'F' in labels:
             self.f_idx = labels.index('F')
             print('Auto-detected Flow channel from labels.')
@@ -1547,7 +1554,7 @@ class VentilatorDataGroup(TimeSeriesGroup):
         else:
             self.v_vent_idx = None
 
-        if self.p_vent_idx is not None and self.v_vent_idx is not None:
-            self.find_peep(self.p_vent_idx, self.v_vent_idx)
+        if self.p_aw_idx is not None and self.v_vent_idx is not None:
+            self.find_peep(self.p_aw_idx, self.v_vent_idx)
         else:
             self.peep = None
