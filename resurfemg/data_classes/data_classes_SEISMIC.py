@@ -454,51 +454,22 @@ class TimeSeries:
             peak_set_name=peak_set_name,
         )
 
-    def link_peak_set(
+
+    def quality_assement(
         self,
+        threshold,
         peak_set_name,
-        t_reference_peaks,
-        linked_peak_set_name=None,
     ):
-        """
-        Find the peaks in the PeaksSet with the peak_set_name closest in time
-        to the provided peak timings in t_reference_peaks
-
-        :param peak_set_name: PeaksSet name in self.peaks dict
-        :type peak_set_name: str
-        :param t_reference_peaks: Refernce peak timings in t_reference_peaks
-        :type t_reference_peaks: ~numpy.ndarray
-        :param linked_peak_set_name: Name of the new PeaksSet
-        :type linked_peak_set_name: str
-
-        :return: None
-        :rtype: None
-        """
-        if peak_set_name in self.peaks.keys():
-            peak_set = self.peaks[peak_set_name]
-        else:
-            raise KeyError("Non-existent PeaksSet key")
-
-        if linked_peak_set_name is None:
-            linked_peak_set_name = peak_set_name + '_linked'
-
-        t_PeaksSet_peaks = peak_set.peak_df['peak_idx'].to_numpy() / self.fs
-        link_peak_nrs = evt.find_linked_peaks(
-            t_reference_peaks,
-            t_PeaksSet_peaks,
-        )
-        self.peaks[linked_peak_set_name] = self.PeaksSet(
-            peak_set.signal, peak_set.t_data, peak_idxs=None
-        )
-        self.peaks[linked_peak_set_name].peak_df = \
-            peak_set.peak_df.loc[link_peak_nrs].reset_index(
-                drop=True)
-        self.peaks[linked_peak_set_name].quality_values_df = \
-            peak_set.quality_values_df.loc[link_peak_nrs].reset_index(
-                drop=True)
-        self.peaks[linked_peak_set_name].quality_outcomes_df = \
-            peak_set.quality_outcomes_df.loc[link_peak_nrs].reset_index(
-                drop=True)
+        self.detect_emg_breaths(
+                threshold=threshold,
+                peak_set_name=peak_set_name
+                )
+        self.peaks[peak_set_name].detect_on_offset(
+            fs=self.fs,
+            baseline=self.y_baseline
+            )
+        self.calculate_time_products(peak_set_name='breaths')
+        self.test_emg_quality(peak_set_name='breaths', verbose=False)
 
     def calculate_time_products(
         self,
@@ -750,123 +721,7 @@ class TimeSeries:
             print('Test outcomes:')
             print(peak_set.quality_outcomes_df)
 
-    def test_pocc_quality(
-        self,
-        peak_set_name,
-        cutoff=None,
-        skip_tests=None,
-        parameter_names=None,
-        verbose=True,
-    ):
-        """
-        Test EMG PeaksSet according to quality criteria in Warnaar et al.
-        (2024). Peak validity is updated in the PeaksSet object.
-
-        :param peak_set_name: PeaksSet name in self.peaks dict
-        :type peak_set_name: str
-        :param cutoff: Cut-off criteria for passing the tests, including
-        consecutiveness of Pocc manoeuvre (consecutive_poccs), and p_vent
-        upslope (dP_up_10, dP_up_90, and dP_up_90_norm). 'tolerant' and
-        'strict' can also be provided instead of a dict to use the respective
-         values from Warnaar et al.
-        :type cutoff: dict
-        :param skip_tests: List of tests to skip.
-        :type skip_tests: list
-        :param parameter_names: Optionally refer to custom parameter names for
-        default PeaksSet and parameter names (ventilator_breaths,
-        time_product, AUB, )
-        :type parameter_names: dict
-        :param verbose: Output the test values, and pass/fail to console.
-        :type verbose: bool
-
-        :returns: None
-        :rtype: None
-        """
-        if peak_set_name in self.peaks.keys():
-            peak_set = self.peaks[peak_set_name]
-        else:
-            raise KeyError("Non-existent PeaksSet key")
-
-        if skip_tests is None:
-            skip_tests = []
-
-        if (cutoff is None
-                or (isinstance(cutoff, str) and cutoff == 'tolerant')
-                or (isinstance(cutoff, str) and cutoff == 'strict')):
-            cutoff = dict()
-            cutoff['consecutive_poccs'] = 0
-            cutoff['dP_up_10'] = 0.0
-            cutoff['dP_up_90'] = 2.0
-            cutoff['dP_up_90_norm'] = 0.8
-        elif isinstance(cutoff, dict):
-            tests = ['consecutive_poccs', 'pocc_upslope']
-            tests_crit = dict()
-            tests_crit['consecutive_poccs'] = ['consecutive_poccs']
-            tests_crit['pocc_upslope'] = [
-                'dP_up_10', 'dP_up_90', 'dP_up_90_norm']
-
-            for _, test in enumerate(tests):
-                if test not in skip_tests:
-                    for test_crit in tests_crit[test]:
-                        if test_crit not in cutoff.keys():
-                            raise KeyError(
-                                'No cut-off value provided for: ' + test)
-
-        if parameter_names is None:
-            parameter_names = dict()
-
-        for parameter in ['ventilator_breaths', 'time_product', 'AUB']:
-            if parameter not in parameter_names.keys():
-                parameter_names[parameter] = parameter
-
-        quality_values_df = pd.DataFrame(data=peak_set.peak_df['peak_idx'],
-                                         columns=['peak_idx'])
-        quality_outcomes_df = pd.DataFrame(data=peak_set.peak_df['peak_idx'],
-                                           columns=['peak_idx'])
-
-        if 'consecutive_poccs' not in skip_tests:
-            if parameter_names['ventilator_breaths'] not in self.peaks.keys():
-                raise ValueError('Ventilator breaths not determined, but '
-                                 + 'required for consecutive Pocc evaluation.')
-            vent_breaths = parameter_names['ventilator_breaths']
-            ventilator_breath_idxs = \
-                self.peaks[vent_breaths].peak_df['peak_idx'].to_numpy()
-            valid_manoeuvres = qa.detect_non_consecutive_manoeuvres(
-                ventilator_breath_idxs=ventilator_breath_idxs,
-                manoeuvres_idxs=peak_set.peak_df['peak_idx'].to_numpy(),
-            )
-            quality_outcomes_df['consecutive_poccs'] = valid_manoeuvres
-
-        if 'pocc_upslope' not in skip_tests:
-            if 'end_idx' not in peak_set.peak_df.columns:
-                raise ValueError('Pocc end_idx not determined, but required '
-                                 + 'for Pocc upslope evaluaton.')
-            if parameter_names['time_product'] not in peak_set.peak_df.columns:
-                raise ValueError('PTPs not determined, but required for Pocc '
-                                 + 'upslope evaluaton.')
-            valid_poccs, criteria_matrix = qa.pocc_quality(
-                p_vent_signal=self.y_raw,
-                pocc_peaks=peak_set.peak_df['peak_idx'].to_numpy(),
-                pocc_ends=peak_set.peak_df['end_idx'].to_numpy(),
-                ptp_occs=peak_set.peak_df[
-                    parameter_names['time_product']].to_numpy(),
-                dp_up_10_threshold=cutoff['dP_up_10'],
-                dp_up_90_threshold=cutoff['dP_up_90'],
-                dp_up_90_norm_threshold=cutoff['dP_up_90_norm'],
-            )
-            quality_values_df['dP_up_10'] = criteria_matrix[0, :]
-            quality_values_df['dP_up_90'] = criteria_matrix[1, :]
-            quality_values_df['dP_up_90_norm'] = criteria_matrix[2, :]
-
-            quality_outcomes_df['pocc_upslope'] = valid_poccs
-
-        peak_set.update_test_outcomes(quality_values_df)
-        peak_set.evaluate_validity(quality_outcomes_df)
-        if verbose:
-            print('Test values:')
-            print(peak_set.quality_values_df)
-            print('Test outcomes:')
-            print(peak_set.quality_outcomes_df)
+        self.df_quality_outcomes = peak_set.quality_outcomes_df
 
     def plot_full(self, axis=None, signal_type=None,
                   colors=None, baseline_bool=True):
@@ -1660,142 +1515,3 @@ class VentilatorDataGroup(TimeSeriesGroup):
             self.find_peep(self.p_vent_idx, self.v_vent_idx)
         else:
             self.peep = None
-
-    def find_peep(self, pressure_idx, volume_idx):
-        """
-        Calculate PEEP as the median value of p_vent at end-expiration.
-
-        :param pressure_idx: Channel index of the ventilator pressure data
-        :type pressure_idx: int
-        :param volume_idx: Channel index of the ventilator volume data
-        :type volume_idx: int
-
-        :returns: None
-        :rtype: None
-        """
-        if pressure_idx is None:
-            if self.p_vent_idx is not None:
-                pressure_idx = self.p_vent_idx
-            else:
-                raise ValueError(
-                    'pressure_idx and self.p_vent_idx not defined')
-
-        if volume_idx is None:
-            if self.v_vent_idx is not None:
-                volume_idx = self.v_vent_idx
-            else:
-                raise ValueError(
-                    'volume_idx and self.v_vent_idx not defined')
-
-        v_ee_pks, _ = scipy.signal.find_peaks(-self.channels[volume_idx].y_raw)
-        self.peep = np.round(np.median(
-            self.channels[pressure_idx].y_raw[v_ee_pks]))
-
-    def find_occluded_breaths(
-        self,
-        pressure_idx,
-        peep=None,
-        start_idx=0,
-        end_idx=None,
-        prominence_factor=0.8,
-        min_width_s=None,
-        distance_s=None,
-    ):
-        """
-        Find end-expiratory occlusion manoeuvres in ventilator pressure
-        timeseries data. See postprocessing.event_detection submodule.
-
-        :param pressure_idx: Channel index of the ventilator pressure data
-        :type pressure_idx: int
-        For other arguments, see postprocessing.event_detection submodule.
-
-        :returns: None
-        :rtype: None
-        """
-        if peep is None and self.peep is None:
-            raise ValueError('PEEP is not defined.')
-        elif peep is None:
-            peep = self.peep
-
-        peak_idxs = find_occluded_breaths(
-            p_vent=self.channels[pressure_idx].y_raw,
-            fs=self.fs,
-            peep=peep,
-            start_idx=start_idx,
-            end_idx=end_idx,
-            prominence_factor=prominence_factor,
-            min_width_s=min_width_s,
-            distance_s=distance_s,
-        )
-        peak_idxs = peak_idxs + start_idx
-        self.channels[pressure_idx].set_peaks(
-            signal=self.channels[pressure_idx].y_raw,
-            peak_idxs=peak_idxs,
-            peak_set_name='Pocc',
-        )
-
-    def find_tidal_volume_peaks(
-        self,
-        volume_idx=None,
-        start_idx=0,
-        end_idx=None,
-        width_s=None,
-        threshold=None,
-        prominence=None,
-        threshold_new=None,
-        prominence_new=None,
-        pressure_idx=None,
-    ):
-        """
-        Find tidal-volume peaks in ventilator volume signal. Peaks are stored
-        in PeaksSet named 'ventilator_breaths' in ventilator pressure and
-        volume TimeSeries.
-
-        :param volume_idx: Channel index of the ventilator volume data
-        :type volume_idx: int
-        For other arguments, see postprocessing.event_detection submodule.
-
-        :returns: None
-        :rtype: None
-        """
-        if volume_idx is None:
-            if self.v_vent_idx is not None:
-                volume_idx = self.v_vent_idx
-            else:
-                raise ValueError(
-                    'volume_idx and v_vent_idx not defined')
-
-        if end_idx is None:
-            end_idx = len(self.channels[volume_idx].y_raw) - 1
-
-        if width_s is None:
-            width_s = self.fs // 4
-
-        peak_idxs = evt.detect_ventilator_breath(
-            v_vent=self.channels[volume_idx].y_raw,
-            start_idx=start_idx,
-            end_idx=end_idx,
-            width_s=width_s,
-            threshold=threshold,
-            prominence=prominence,
-            threshold_new=threshold_new,
-            prominence_new=prominence_new
-        )
-
-        self.channels[volume_idx].set_peaks(
-            signal=self.channels[volume_idx].y_raw,
-            peak_idxs=peak_idxs,
-            peak_set_name='ventilator_breaths',
-        )
-
-        if pressure_idx is None and self.p_vent_idx is not None:
-            pressure_idx = self.p_vent_idx
-
-        if pressure_idx is not None:
-            self.channels[pressure_idx].set_peaks(
-                signal=self.channels[pressure_idx].y_raw,
-                peak_idxs=peak_idxs,
-                peak_set_name='ventilator_breaths',
-            )
-        else:
-            warnings.warn('pressure_idx and self.p_vent_idx not defined.')
