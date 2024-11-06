@@ -253,13 +253,23 @@ class TimeSeries:
         """
         y_data = self.signal_type_data(signal_type=signal_type)
         # Eliminate the baseline wander from the data using a band-pass filter
-        self.y_clean = filt.emg_bandpass_butter(
-            y_data,
-            high_pass=hp_cf,
-            low_pass=lp_cf,
-            fs_emg=self.fs,
-            order=order)
+        self.y_clean = filt.emg_bandpass_butter_sample(
+            y_data, hp_cf, lp_cf, self.fs, output='sos')
 
+    def remove_outliers_emg(
+        self,
+        signal_type,
+        fs,
+        lowest_threshold
+     ):
+        """
+        Remove outliers based on a threshold. See ecg_removal submodule in
+        preprocessing.
+        """
+        emg_signal = self.signal_type_data(signal_type=signal_type)
+        # Eliminate the outliers found with a automatically detected threshold
+        self.y_clean = ecg_rm.remove_outliers_emg(emg_signal,fs,lowest_threshold)
+        
     def gating(
         self,
         signal_type='clean',
@@ -1401,7 +1411,48 @@ class EmgDataGroup(TimeSeriesGroup):
                 signal_type=signal_type,
                 hp_cf=hp_cf,
                 lp_cf=lp_cf,
-                order=order,
+            )
+
+    def signal_type_clean(
+        self,
+        channel_idxs=None  
+    ):
+        """
+        Convert data to a signal type 'clean'.
+        """
+        if channel_idxs is None:
+            channel_idxs = np.arange(self.n_channel)
+        elif isinstance(channel_idxs, int):
+            channel_idxs = np.array([channel_idxs])
+
+        for _, channel_idx in enumerate(channel_idxs):
+            self.channels[channel_idx].signal_type_data(
+                signal_type='clean',
+            )
+
+    def remove_outliers(
+        self, 
+        signal_type = 'clean',
+        channel_idxs=None,
+        lowest_threshold=None
+    ):
+        """
+        This function removes outliers of the ECG signal
+    
+        """
+        if channel_idxs is None:
+            channel_idxs = np.arange(self.n_channel)
+        elif isinstance(channel_idxs, int):
+            channel_idxs = np.array([channel_idxs])
+
+        if lowest_threshold is None:
+            lowest_threshold = 20
+
+        for _, channel_idx in enumerate(channel_idxs):
+            self.channels[channel_idx].remove_outliers_emg(
+                signal_type=signal_type,
+                fs = self.fs,
+                lowest_threshold = lowest_threshold
             )
 
     def gating(
