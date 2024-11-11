@@ -12,6 +12,7 @@ import pandas as pd
 import scipy
 import matplotlib.pyplot as plt
 import pickle
+from resurfemg.preprocessing import airwaypressure as paw
 
 from resurfemg.helper_functions import helper_functions as hf
 from resurfemg.preprocessing import filtering as filt
