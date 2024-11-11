@@ -1408,7 +1408,6 @@ class EmgDataGroup(TimeSeriesGroup):
         signal_type='raw',
         hp_cf=20.0,
         lp_cf=500.0,
-        order=3,
         channel_idxs=None,
     ):
         """
