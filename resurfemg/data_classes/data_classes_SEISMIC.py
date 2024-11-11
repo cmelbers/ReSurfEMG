@@ -1526,6 +1526,37 @@ class EmgDataGroup(TimeSeriesGroup):
                 threshold=threshold,
                 peak_set_name=peak_set_name
                 )
+            
+    def quantify_outcomes(self, 
+                          channel_idxs=None):
+        """
+        Create dataframe with the number of True and False outcomes per category
+        """
+
+        if channel_idxs is None:
+            channel_idxs = np.arange(self.n_channel)
+        elif isinstance(channel_idxs, int):
+            channel_idxs = np.array([channel_idxs])
+
+        for _, channel_idx in enumerate(channel_idxs):
+            
+            # Add a row with the sum of all rows
+            df_quality_outcomes = self.channels[channel_idx].df_quality_outcomes
+            df_quality_outcomes['total'] = df_quality_outcomes.all(axis=1)
+
+            # Set lists for dataframe
+            outcomes = []
+            categories = ['baseline_detection', 'interpeak_distance', 'snr', 'aub', 'bell','total']
+            
+            # Count all false and true peaks per category
+            for category in categories:
+                true_count = df_quality_outcomes[category].sum()
+                false_count = len(df_quality_outcomes) - true_count
+                outcomes.append([category, true_count, false_count])
+
+            # Create a dataframe with the counted false and true peaks per category
+            df_all_quality_outcomes = pd.DataFrame(outcomes, columns=['Outcome', 'True', 'False'])
+            self.channels[channel_idx].df_all_quality_outcomes = df_all_quality_outcomes
 
     def save_instance(self, filename):
         # Save the instance to a file using pickle
