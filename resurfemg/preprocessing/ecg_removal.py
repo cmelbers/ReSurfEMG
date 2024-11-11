@@ -630,7 +630,9 @@ def choose_thresholds_outliers(signal, fs, lowest_threshold):
     for list_thres in thresholds:
         for thres in list_thres:
             samples_around_thres = signal[(signal >= thres) & (signal <= thres+3)]
-            if len(samples_around_thres) < (len(signal)/fs)/10:
+            # Define the current threshold as threshold if 20 samples per minute are approximately
+            # on the threshold. 
+            if len(samples_around_thres) < (len(signal)/fs)/60*45:
                 if list_t == 'positive':
                     outlier_thres_pos = thres
                 else:
