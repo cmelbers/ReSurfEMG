@@ -278,7 +278,7 @@ class TimeSeries:
         ecg_peak_idxs=None,
         ecg_raw=None,
         bp_filter=True,
-        use_no_outliers = False
+        remove_outliers = False
     ):
         """
         Eliminate ECG artifacts from the provided signal. See ecg_removal
@@ -286,11 +286,11 @@ class TimeSeries:
         """
         y_data = self.signal_type_data(signal_type=signal_type)
         if ecg_peak_idxs is None:
-            if ecg_raw is None and use_no_outliers is False:
+            if ecg_raw is None and remove_outliers is False:
                 lp_cf = min([500.0, self.fs / 2])
                 ecg_raw = filt.emg_bandpass_butter_sample(
                     self.y_raw, 1, lp_cf, self.fs, output='sos')
-            elif use_no_outliers is True:
+            elif remove_outliers is True:
                 ecg_raw = self.y_clean
 
             ecg_peak_idxs = ecg_rm.detect_ecg_peaks(
@@ -1478,7 +1478,7 @@ class EmgDataGroup(TimeSeriesGroup):
         ecg_raw=None,
         bp_filter=True,
         channel_idxs=None,
-        use_no_outliers = None
+        remove_outliers = None
     ):
         """
         Eliminate ECG artifacts from the provided signal. See ecg_removal
@@ -1502,7 +1502,7 @@ class EmgDataGroup(TimeSeriesGroup):
                 ecg_peak_idxs=ecg_peak_idxs,
                 ecg_raw=ecg_raw,
                 bp_filter=bp_filter,
-                use_no_outliers = use_no_outliers
+                remove_outliers = remove_outliers
             )
             
     def quality_check(
