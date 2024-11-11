@@ -4,175 +4,259 @@ from scipy.signal import find_peaks
 
 from resurfemg.preprocessing import filtering as filt
 
+#To do: integereren met extract_val algemeen
+def extract_val(
+        time, 
+        idxs,
+        signal, 
+        fs
+    ):
+    """ 
+     Find values which are correlated to the timing or indexes of events. Choose to extract
+     the values with the time with input idxs=None. Extract the values with the
+     indexes with input time=None and fs=None.
+
+     Input:
+    :param min_dif: minimum distance between 2 breaths
+    :type min_dif: ~int
+    :param peak: kind of peak to detect (maxima or minima)
+    :type peak: ~str    
+
+    Output:
+    :param time: times from which the values need to be extracted
+    :type time: ~numpy.ndarray
+    :param idxs: idxs from which the values need to be extracted
+    :type idxs: ~numpy.ndarray
+    :param signal: signal from which the values need to be extracted
+    :type signal: ~numpy.ndarray
+    param fs: sample frequency
+    :type fs: int
+
+    Output:
+    :param val: extracted values
+    :type val: ~numpy.ndarray
+     """
+    if idxs is None:
+        idxs = [int(t * fs) for t in time] 
+    val = signal[idxs]
+
+    return val
+
 def find_peaks_vent(
-        signal,
-        fs,
+        self,
         min_dif,
         peak,
 ):
     """
-    Find peaks of ventilator signals
+    Find peaks of ventilator signals and remove the samples too
+    close to each other.
+    
+    Input:
+    :param min_dif: minimum distance between 2 breaths
+    :type min_dif: ~int
+    :param peak: kind of peak to detect (maxima or minima)
+    :type peak: ~str    
+
+    Output:
+    :param time: times at which peaks occur
+    :type time: ~numpy.ndarray
+    :param vals: values corresponding to the times at which peaks occur
+    :type vals: ~numpy.ndarray
+    :param idxs: indexes at which peaks occur
+    :type idxs: ~numpy.ndarray
     """
+    signal = self.channels[0].y_raw
+    fs = self.channels[0].fs
+    # Invert signal if minima need to be found
     if peak == 'minima':
-        indx, __ = find_peaks(-signal)
+        idxs, __ = find_peaks(-signal)
     elif peak == 'maxima':
-        indx, __ = find_peaks(signal)
+        idxs, __ = find_peaks(signal)
     else:
         print('Define if peaks are minima or maxima')
 
-    indx = indx.tolist()
-    val = signal[indx]
-    val = val.tolist()
-
     # Remove false peaks by controling interval between peaks
+    vals = extract_val(None, idxs, signal, fs)
+    idxs = idxs.tolist()
+    vals = vals.tolist()
+    
     i = 0
-    while i < len(indx)-1:
-        dif_samples = indx[i+1]-indx[i]
-        if dif_samples/fs < min_dif: # To do: betere argumentatie hiervoor vinden
-            if val[i] >= val[i+1]:
+    while i < len(idxs)-1:
+        dif_samples = idxs[i+1]-idxs[i]
+        if dif_samples/fs < min_dif: 
+            if vals[i] >= vals[i+1]:
                 if peak == 'minima':
-                    del indx[i]
-                    del val[i]
+                    del idxs[i]
+                    del vals[i]
                 else:
-                    del indx[i+1]
-                    del val[i+1]
+                    del idxs[i+1]
+                    del vals[i+1]
             else:
                 if peak == 'minima':
-                    del indx[i+1]
-                    del val[i+1]
+                    del idxs[i+1]
+                    del vals[i+1]
                 else:
-                    del indx[i]
-                    del val[i]
+                    del idxs[i]
+                    del vals[i]
         else:
             i = i+1
 
-    # Remove false peaks by controling value
+    idxs = np.array(idxs)
+    vals = extract_val(None, idxs, signal, fs)
+    time = idxs/fs
 
-    indx = np.array(indx)
-    val = np.array(val)
-    time = indx/fs
-
-    return time, val, indx
+    return time, vals, idxs
 
 def remove_small_peaks(
-        val, 
-        indx, 
-        fs
+        self,
+        threshold_percentile=0.7
     ):
     """
-    Remove smaller peaks based on a threshold determined by the mean of all peaks.
-    """
-    mean_peak_end = val.mean()
-    indx = indx.tolist()
-    val = val.tolist()
+    Remove smaller peaks based on a threshold (default = 0.7) determined 
+    by the mean of all peaks.
 
+    Input:
+    :param threshold: percentile under which peaks are removed
+    :type threshold: ~float
+
+    Output:
+    :param time: times at which valid peaks occur
+    :type time: ~numpy.ndarray
+    :param vals: values corresponding to the times at which valid peaks occur
+    :type vals: ~numpy.ndarray
+    :param idxs: indexes at which valid peaks occur
+    :type idxs: ~numpy.ndarray
+    """
+
+    val = self.peak_end_in_mv
+    idx = self.idx_end_in_mv
+    fs = self.fs
+    
+    # Define threshold
+    mean_peak_end = val.mean()
+    threshold = mean_peak_end*threshold_percentile
+
+    # Remove peaks that are below the threshold
+    idx = idx.tolist()
+    val = val.tolist()
     i=0
-    while i < len(indx)-1:
-        if val[i]<mean_peak_end*0.7:
-            del indx[i]
+    while i < len(idx)-1:
+        if val[i]<threshold:
+            del idx[i]
             del val[i]
         else:
             i = i+1
 
-    indx = np.array(indx)
+    idx = np.array(idx)
     val = np.array(val)
-    time = indx/fs
+    time = idx/fs
 
-    return time, val, indx
+    return time, val, idx
 
-def extract_breathing_effort(
-        indx_start_in_mv, 
-        raw_signal, 
-        fs
+def extract_breathing_trigger(
+        self
     ):
     """
-    Extract breathing effort using the derivative of the signal and the start of the by the mechanical
+    Extract breathing trigger (bt) using the derivative of the signal and the start of the by the mechanical
     ventilation supported inhalation.
+
+    Output:
+    :param time_bt: times at which a breathing trigger occur
+    :type time_bt: ~numpy.ndarray
+    :param val_bt: values corresponding to the times at which a breathing trigger occur
+    :type val_bt: ~numpy.ndarray
+    :param idx_bt: indexes at which a breathing trigger occur
+    :type idx_bt: ~numpy.ndarray
     """
+    idx_start_mv = self.idx_start_in_mv
+    raw_signal = self.channels[0].y_raw 
+    fs = self.fs
+    
     # Filter signal
     clean_signal = filt.emg_lowpass_butter_sample(
             raw_signal, 3, fs,)
     # Find part of signal with derivative of less than -5 cm H2O per second (= -0.25 cm H2O per 5 samples)
-    indx_be_all = []
+    # infront of the start of the support from the mechanical ventilation (mv)
+    idx_bt_all = []
     nsamps = range(5,30)
-    for i in indx_start_in_mv:
+    for i in idx_start_mv:
         for nsamp in nsamps:
-            if (clean_signal[i-nsamp+5]-clean_signal[i-nsamp+1]) <= -0.25:
+            if (clean_signal[i-nsamp+5]-clean_signal[i-nsamp+1]) <= -0.2:
                 for s in range(i-nsamp+1, i+1):
-                    if s not in indx_be_all:
-                        indx_be_all.extend(range(i-nsamp+1, i+1)) 
-            old_nsamp = nsamp
-    indx_be_all.sort()
+                    if s not in idx_bt_all:
+                        idx_bt_all.extend(range(i-nsamp+1, i+1))
+    idx_bt_all.sort()
 
-    # Find beginning per part
-    indx_be = [indx_be_all[0]]
-    for i in range(1,len(indx_be_all)):
-        if indx_be_all[i]-indx_be_all[i-1] > 1:
-            indx_be.append(indx_be_all[i])
+    # Find the first sample per part with a sufficient derivative
+    idx_bt = [idx_bt_all[0]]
+    for i in range(1,len(idx_bt_all)):
+        if idx_bt_all[i]-idx_bt_all[i-1] > 1:
+            idx_bt.append(idx_bt_all[i])
 
-    # Use indexes on raw signal
-    indx_be = np.array(indx_be)
-    time_be = indx_be/fs
-    be = raw_signal[indx_be]
+    # Find values by using indexes and raw signal
+    idx_bt = np.array(idx_bt)
+    time_bt = idx_bt/fs
+    val_bt = raw_signal[idx_bt]
 
-    return time_be, be, indx_be
+    return time_bt, val_bt, idx_bt
 
-def remove_false_mininima(
-        raw_signal,
-        indx_start_in_mv, 
-        indx_end_in_mv, 
-        indx_be,
-        fs
-    ):
+def remove_false_mv_starts(self):
     """
-    Removes minimum if they are not right before a maximum or right after a slope created by the breathing effort.
+    Removes the start of the mechanical ventilator (mv) supporting the inhalation if they are not before 
+    a an end of the mv supporting an inhalation or after the start of a breathing trigger.
+
+    Output:
+    :param time_start_in_mv: times at which the MV starts to support
+    :type time_start_in_mv: ~numpy.ndarray
+    :param val_start_in_mv: values corresponding to the times at which the MV starts to support
+    :type val_start_in_mv: ~numpy.ndarray
+    :param idx_start_in_mv: indexes at which the MV starts to support
+    :type idx_start_in_mv: ~numpy.ndarray
     """
-    indx_start_in_mv = indx_start_in_mv.tolist()
+
+    raw_signal = self.channels[0].y_raw 
+    idx_start_in_mv = self.idx_start_in_mv 
+    idx_end_in_mv = self.idx_end_in_mv
+    idx_bt = self.idx_end_in_mv
+    fs = self.fs
+
+    idx_end_in_mv = idx_end_in_mv.tolist()
+    idx_start_in_mv = idx_start_in_mv.tolist()
     i = 0
     j = 0
-    for indx in range(0,len(indx_end_in_mv)):
-        list_of_minima_indx = []
-        list_of_be_indx = []
+    for idx in range(0,len(idx_end_in_mv)):
+        list_of_start_in_idx = []
+        list_of_bt_idx = []
 
-    # Determine number of minima and starts of breathing effort before one tidal breath
-        while i < len(indx_start_in_mv) and indx_start_in_mv[i] < indx_end_in_mv[indx]:
-            list_of_minima_indx.append(indx_start_in_mv[i])
+        # Determine which starts of an mv supporting an inhalation and which starts of a breathing trigger 
+        # occur before the end of the mv supporting an inhalation
+        while i < len(idx_start_in_mv) and idx_start_in_mv[i] < idx_end_in_mv[idx]:
+            list_of_start_in_idx.append(idx_start_in_mv[i])
             i = i+1
-        while j < len(indx_be) and indx_be[j] < indx_end_in_mv[indx]:
-            list_of_be_indx.append(indx_be[j])
+        while j < len(idx_bt) and idx_bt[j] < idx_end_in_mv[idx]:
+            list_of_bt_idx.append(idx_bt[j])
             j = j+1
 
+        # When multiple starts of the mv supporting an inhalation occur and breathing triggers are 
+        # detected, remove the starts wich do not follow a breathing trigger. If there are no breathing
+        # triggers, keep only the lowest minimum.
         k=0
-        if len(list_of_minima_indx) > 1:
-            for indx_list in range(0,len(list_of_minima_indx)-1):
-                if indx_list < len(list_of_minima_indx)-1:
-                    if len(list_of_be_indx) > 0:
-                        if list_of_be_indx[indx_list-k] > list_of_minima_indx[indx_list]:
-                            indx_start_in_mv.remove(list_of_minima_indx[indx_list])
-                            k = k+1
-                    else:
-                        indx_start_in_mv.remove(list_of_minima_indx[indx_list])
+        if len(list_of_start_in_idx) > 1:
+            if len(list_of_bt_idx) > 0:
+                for l in range(len(list_of_start_in_idx)-1):
+                    if k < (len(list_of_bt_idx)):
+                        if list_of_bt_idx[k] > list_of_start_in_idx[l]:
+                            idx_start_in_mv.remove(list_of_start_in_idx[l])
+                        else:
+                            k += 1
+            else:
+                list_of_start_in_idx.sort()
+                higher_minima = list_of_start_in_idx[1:]
+                for minimum in higher_minima:
+                    idx_start_in_mv.remove(minimum)
 
-    indx_start_in_mv = np.array(indx_start_in_mv)
-    time_start_in_mv = indx_start_in_mv/fs
-    peak_start_in_mv = raw_signal[indx_start_in_mv]
+    idx_start_in_mv = np.array(idx_start_in_mv)
+    time_start_in_mv = idx_start_in_mv/fs
+    val_start_in_mv = raw_signal[idx_start_in_mv]
 
-    return time_start_in_mv, peak_start_in_mv, indx_start_in_mv
-
-def pipeline_process_vent(
-        raw_signal,
-        fs
-    ):
-    """
-    Process airway pressure data.
-    """
-    time_start_in_mv, peak_start_in_mv, indx_start_in_mv = find_peaks_vent(raw_signal, fs, 1.5, peak='minima') # so max respiratory rate of 40
-    time_end_in_mv, peak_end_in_mv,  indx_end_in_mv = find_peaks_vent(raw_signal, fs, 1.5, peak='maxima',) # so max respiratory rate of 40
-
-    time_end_in_mv, peak_end_in_mv,  indx_end_in_mv = remove_small_peaks(peak_end_in_mv,indx_end_in_mv, fs)
-
-    time_be, be, indx_be = extract_breathing_effort(indx_start_in_mv, raw_signal, fs)
-
-    time_start_in_mv, peak_start_in_mv, indx_start_in_mv = remove_false_mininima(raw_signal, indx_start_in_mv, indx_end_in_mv, indx_be,fs)
-
-    return time_start_in_mv, peak_start_in_mv, time_end_in_mv, peak_end_in_mv, time_be, be
+    return time_start_in_mv, val_start_in_mv, idx_start_in_mv
