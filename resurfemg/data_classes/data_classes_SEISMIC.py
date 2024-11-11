@@ -1590,3 +1590,28 @@ class VentilatorDataGroup(TimeSeriesGroup):
             self.find_peep(self.p_aw_idx, self.v_vent_idx)
         else:
             self.peep = None
+
+    def pipeline_process_vent(
+            self,
+            threshold_small_peaks=None
+        ):
+        """
+        Process airway pressure data.
+        Input:
+        :param raw_signal: unprocessed airway pressure signal
+        :type idx: ~numpy.ndarray
+        :param fs: sampeling rate
+        :type fs: ~int
+        :param threshold_small_peaks: percentage under which small peaks are not taken into account
+        :type threshold_small_peaks: ~float or None
+        """
+        if threshold_small_peaks is None:
+            threshold_small_peaks = 0.7
+
+        self.y_raw = self.channels[0].y_raw
+        self.fs = self.channels[0].fs
+        self.time_start_in_mv, self.peak_start_in_mv, self.idx_start_in_mv = paw.find_peaks_vent(self, 1.5, peak='minima') # so max respiratory rate of 40
+        self.time_end_in_mv, self.peak_end_in_mv,  self.idx_end_in_mv = paw.find_peaks_vent(self, 1.5, peak='maxima',) # so max respiratory rate of 40
+        self.time_end_in_mv, self.peak_end_in_mv,  self.idx_end_in_mv = paw.remove_small_peaks(self, threshold_percentile=threshold_small_peaks)
+        self.time_bt, self.bt, self.idx_bt = paw.extract_breathing_trigger(self)
+        self.time_start_in_mv, self.peak_start_in_mv, self.idx_start_in_mv = paw.remove_false_mv_starts(self)
